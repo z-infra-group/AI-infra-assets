@@ -9,12 +9,22 @@ import { imageHero1 } from './image-hero-1'
 import { post1 } from './post-1'
 import { post2 } from './post-2'
 import { post3 } from './post-3'
+import { prompt1 } from './prompt-1'
+import { promptTest1 } from './prompt-test-1'
+import { provider1 } from './provider-1'
+import { provider2 } from './provider-2'
+import { model1 } from './model-1'
+import { model2 } from './model-2'
 
 const collections: CollectionSlug[] = [
   'categories',
   'media',
   'pages',
   'posts',
+  'prompts',
+  'prompt-tests',
+  'llm-providers',
+  'llm-models',
   'forms',
   'form-submissions',
   'search',
@@ -191,6 +201,76 @@ export const seed = async ({
       relatedPosts: [post1Doc.id, post2Doc.id],
     },
   })
+
+  payload.logger.info(`— Seeding prompts...`)
+
+  const prompt1Doc = await payload.create({
+    collection: 'prompts',
+    depth: 0,
+    context: {
+      disableRevalidate: true,
+    },
+    data: prompt1({ author: demoAuthor }),
+  })
+
+  payload.logger.info(`— Seeding prompt tests...`)
+
+  await payload.create({
+    collection: 'prompt-tests',
+    depth: 0,
+    context: {
+      disableRevalidate: true,
+    },
+    data: promptTest1({
+      prompt: prompt1Doc,
+      author: demoAuthor,
+    }),
+  })
+
+  payload.logger.info(`— Seeding LLM providers...`)
+
+  const provider1Doc = await payload.create({
+    collection: 'llm-providers',
+    depth: 0,
+    context: {
+      disableRevalidate: true,
+    },
+    data: provider1({ owner: demoAuthor }),
+  })
+
+  const provider2Doc = await payload.create({
+    collection: 'llm-providers',
+    depth: 0,
+    context: {
+      disableRevalidate: true,
+    },
+    data: provider2({ owner: demoAuthor }),
+  })
+
+  payload.logger.info(`— Seeding LLM models...`)
+
+  await Promise.all([
+    payload.create({
+      collection: 'llm-models',
+      depth: 0,
+      context: {
+        disableRevalidate: true,
+      },
+      data: model1({
+        provider: provider1Doc,
+      }),
+    }),
+    payload.create({
+      collection: 'llm-models',
+      depth: 0,
+      context: {
+        disableRevalidate: true,
+      },
+      data: model2({
+        provider: provider2Doc,
+      }),
+    }),
+  ])
 
   payload.logger.info(`— Seeding contact form...`)
 

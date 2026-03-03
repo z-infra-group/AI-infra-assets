@@ -30,6 +30,10 @@ src/
 ├── collections/             # Collection configurations
 │   ├── Pages/               # Page content with layout builder
 │   ├── Posts/               # Blog posts with drafts
+│   ├── Prompts/             # LLM prompt management
+│   ├── PromptTests/         # Test cases for prompts
+│   ├── LLMProviders/        # LLM provider configurations
+│   ├── LLMModels/           # LLM model catalog
 │   ├── Media/               # File uploads
 │   ├── Categories/          # Nested categories
 │   └── Users/               # Authenticated users
@@ -47,7 +51,8 @@ src/
 ├── access/                  # Access control functions
 │   ├── anyone.ts            # Public access
 │   ├── authenticated.ts     # Logged-in users
-│   └── authenticatedOrPublished.ts  # Mixed access
+│   ├── authenticatedOrPublished.ts  # Mixed access
+│   └── adminOnly.ts         # Admin-only operations (TODO: role-based)
 ├── hooks/                   # Reusable hooks
 ├── plugins/                 # Payload plugins configuration
 ├── utilities/               # Helper functions
@@ -60,9 +65,13 @@ src/
 ### Content Management
 - **Pages**: Full layout builder support with drafts and live preview
 - **Posts**: Blog posts with categories, authors, and scheduled publishing
+- **Prompts**: LLM prompt management with model compatibility scoring and versioning
+- **PromptTests**: Test case tracking for prompts with execution metadata and results
+- **LLMProviders**: Centralized LLM provider configuration (API keys, endpoints, rate limits)
+- **LLMModels**: LLM model catalog with capabilities, pricing, and provider relationships
 - **Media**: Upload management with focal points and resizing
 - **Categories**: Nested taxonomy system
-- **Users**: Role-based authentication (admin, editor, user)
+- **Users**: Authentication system (all authenticated users have same permissions in current setup)
 
 ### Plugins
 1. **Form Builder** - Create custom forms with validation
@@ -82,9 +91,14 @@ src/
 - Admin bar for logged-in users
 
 ### Access Control
-- **Public**: Published content only
-- **Authenticated**: Published + own drafts
-- **Admin**: Full access to all content
+- **Public**: Published pages and posts only
+- **Authenticated**:
+  - Can read: Published content + own drafts + all providers and models
+  - Can create/update/delete: Own prompts and prompt tests
+  - Note: Currently all authenticated users have same permissions (no role system yet)
+- **LLMProviders & LLMModels**: Admin-only write, authenticated read (API keys protected)
+- **Prompts**: User-owned with public/private sharing, authenticated users can create
+- **PromptTests**: User-owned, linked to parent prompt visibility
 
 ## Development Guidelines
 
@@ -154,6 +168,126 @@ pnpm test:e2e         # End-to-end tests
 pnpm generate:types   # Generate TypeScript types
 pnpm generate:importmap  # Generate component import map
 ```
+
+## LLM Provider and Model Management
+
+### Provider Configuration
+- **API Keys**: Stored in database, currently as plain text field
+  - ⚠️ **TODO**: Implement encryption for production deployments
+  - ⚠️ **TODO**: Add audit logging for API key access
+  - Admin panel displays masked keys (e.g., `sk-****`)
+- **Provider Types Supported**: OpenAI, Anthropic, Google, Cohere, Hugging Face, Azure OpenAI, AWS Bedrock, Custom
+- **Configuration Fields**:
+  - `authType`: api-key, bearer-token, oauth, none
+  - `apiEndpoint`: Base URL for API calls
+  - `apiVersion`: API version string
+  - `region`: Provider region (if applicable)
+  - `rateLimit`, `rateLimitWindow`: Rate limit configuration (informational)
+  - `quota`: Total quota limit (informational for now)
+  - `enabled`: Enable/disable provider without deleting configuration
+
+### Model Catalog
+- **Provider Relationship**: Each model belongs to one provider (many-to-one)
+- **Capabilities Tracked**:
+  - `contextLength`: Maximum context window in tokens
+  - `maxTokens`: Maximum output tokens
+  - `supportsStreaming`: Boolean flag
+  - `supportsFunctionCalling`: Boolean flag
+- **Pricing Fields**:
+  - `costPerMillTokens`: Simple average pricing
+  - `costPerInputToken`: Precise input token cost
+  - `costPerOutputToken`: Precise output token cost
+- **Metadata**: Tags and capabilities array for categorization
+
+### Access Control Security
+
+**Current Implementation** (TODO: Enhance with role-based access):
+- All authenticated users can create/update/delete providers and models
+- API keys are stored in database (TODO: encrypt at rest)
+- API key field is accessible to admins via admin panel
+- No audit logging for provider changes (TODO: add)
+
+**Future Enhancements**:
+1. Add `role` field to Users collection (admin, editor, user)
+2. Implement proper role checks in `adminOnly` access control
+3. Encrypt API keys using Payload's encrypted field type
+4. Add audit logging for all provider/model changes
+5. Consider email-based admin checks as intermediate step
+
+### Usage Examples
+
+**Query providers via REST API**:
+```bash
+GET /api/llm-providers
+Authorization: Bearer <JWT_TOKEN>
+```
+
+**Query models via GraphQL**:
+```graphql
+query {
+  LlmModels {
+    docs {
+      displayName
+      modelId
+      provider {
+        displayName
+        enabled
+      }
+      contextLength
+      supportsStreaming
+    }
+  }
+}
+```
+
+**Local API usage**:
+```typescript
+import { getPayload } from 'payload'
+
+const payload = await getPayload()
+
+// Get all enabled providers
+const providers = await payload.find({
+  collection: 'llm-providers',
+  where: {
+    enabled: { equals: true }
+  },
+  depth: 0, // Don't populate relationships
+  overrideAccess: false, // IMPORTANT: enforce permissions
+})
+
+// Get models by provider
+const models = await payload.find({
+  collection: 'llm-models',
+  where: {
+    provider: {
+      equals: providerId
+    }
+  },
+  depth: 1, // Populate provider relationship
+  overrideAccess: false,
+})
+```
+
+### Future Integration: Prompt Model Scores
+
+**Current State**:
+- Prompts use text-based model IDs in `modelScores` array
+- Example: `[{ model: "gpt-4", score: 0.95 }]`
+
+**Migration Path**:
+1. Add `model` relationship field to Prompts collection
+2. Run migration script:
+   - Match text IDs to LlmModel records
+   - Populate relationship field
+3. Make relationship field required
+4. Deprecate text-based model IDs
+
+**Benefits of Migration**:
+- Automatic model capability lookup
+- Provider information available
+- Real-time pricing calculations
+- Model status checks (enabled/disabled)
 
 ## Environment Variables
 

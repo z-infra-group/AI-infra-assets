@@ -72,6 +72,10 @@ export interface Config {
     media: Media;
     categories: Category;
     users: User;
+    prompts: Prompt;
+    'prompt-tests': PromptTest;
+    'llm-providers': LlmProvider;
+    'llm-models': LlmModel;
     redirects: Redirect;
     forms: Form;
     'form-submissions': FormSubmission;
@@ -94,6 +98,10 @@ export interface Config {
     media: MediaSelect<false> | MediaSelect<true>;
     categories: CategoriesSelect<false> | CategoriesSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
+    prompts: PromptsSelect<false> | PromptsSelect<true>;
+    'prompt-tests': PromptTestsSelect<false> | PromptTestsSelect<true>;
+    'llm-providers': LlmProvidersSelect<false> | LlmProvidersSelect<true>;
+    'llm-models': LlmModelsSelect<false> | LlmModelsSelect<true>;
     redirects: RedirectsSelect<false> | RedirectsSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
     'form-submissions': FormSubmissionsSelect<false> | FormSubmissionsSelect<true>;
@@ -215,10 +223,6 @@ export interface Page {
   )[];
   meta?: {
     title?: string | null;
-    /**
-     * Maximum upload file size: 12MB. Recommended file size for images is <500KB.
-     */
-    image?: (number | null) | Media;
     description?: string | null;
   };
   publishedAt?: string | null;
@@ -258,10 +262,6 @@ export interface Post {
   categories?: (number | Category)[] | null;
   meta?: {
     title?: string | null;
-    /**
-     * Maximum upload file size: 12MB. Recommended file size for images is <500KB.
-     */
-    image?: (number | null) | Media;
     description?: string | null;
   };
   publishedAt?: string | null;
@@ -784,6 +784,352 @@ export interface Form {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompts".
+ */
+export interface Prompt {
+  id: number;
+  title: string;
+  description?: string | null;
+  /**
+   * The actual prompt text to send to the LLM
+   */
+  content: string;
+  /**
+   * Make this prompt visible to all users
+   */
+  isPublic?: boolean | null;
+  author: number | User;
+  /**
+   * Model compatibility scores (future: integrate with Models collection)
+   */
+  modelScores?:
+    | {
+        /**
+         * e.g., gpt-4, claude-3-opus-20240229
+         */
+        model: string;
+        /**
+         * 0-1 score indicating model compatibility
+         */
+        score: number;
+        id?: string | null;
+      }[]
+    | null;
+  temperature?: number | null;
+  /**
+   * Maximum tokens to generate
+   */
+  maxTokens?: number | null;
+  topP?: number | null;
+  frequencyPenalty?: number | null;
+  presencePenalty?: number | null;
+  /**
+   * Additional LLM parameters as JSON (e.g., stop, tools, tool_choice)
+   */
+  extraConfig?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Tags with "prompt:" prefix to distinguish from other collections
+   */
+  tags?:
+    | {
+        tag?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  meta?: {
+    title?: string | null;
+    description?: string | null;
+  };
+  /**
+   * When enabled, the slug will auto-generate from the title field on save and autosave.
+   */
+  generateSlug?: boolean | null;
+  slug: string;
+  publishedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompt-tests".
+ */
+export interface PromptTest {
+  id: number;
+  title: string;
+  description?: string | null;
+  prompt: number | Prompt;
+  author: number | User;
+  /**
+   * Variables to substitute in the prompt template
+   */
+  inputVariables?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  expectedOutput?: string | null;
+  actualOutput?: string | null;
+  /**
+   * LLM parameters for this test (overrides prompt defaults)
+   */
+  testConfig?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Model ID used for this test
+   */
+  modelUnderTest?: string | null;
+  executionStatus?: ('pending' | 'running' | 'completed' | 'failed') | null;
+  executedAt?: string | null;
+  /**
+   * Time taken to execute the test
+   */
+  executionTime?: number | null;
+  /**
+   * Total tokens consumed during test execution
+   */
+  tokensUsed?: number | null;
+  /**
+   * Cost of running the test in USD
+   */
+  cost?: number | null;
+  /**
+   * Overall test score (0-100)
+   */
+  score?: number | null;
+  /**
+   * Human evaluation feedback
+   */
+  feedback?: string | null;
+  /**
+   * Human verified result
+   */
+  isVerified?: boolean | null;
+  /**
+   * When enabled, the slug will auto-generate from the title field on save and autosave.
+   */
+  generateSlug?: boolean | null;
+  slug: string;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "llm-providers".
+ */
+export interface LlmProvider {
+  id: number;
+  /**
+   * Human-readable name for this provider (e.g., "OpenAI", "Anthropic")
+   */
+  displayName: string;
+  /**
+   * When enabled, the slug will auto-generate from the title field on save and autosave.
+   */
+  generateSlug?: boolean | null;
+  slug: string;
+  /**
+   * Type of LLM provider
+   */
+  providerType:
+    | 'openai'
+    | 'anthropic'
+    | 'google'
+    | 'cohere'
+    | 'huggingface'
+    | 'azure-openai'
+    | 'aws-bedrock'
+    | 'custom';
+  /**
+   * Optional icon URL for the provider
+   */
+  icon?: string | null;
+  /**
+   * Admin who created this provider
+   */
+  owner: number | User;
+  /**
+   * Type of authentication required by the provider
+   */
+  authType?: ('api-key' | 'bearer' | 'oauth' | 'none') | null;
+  /**
+   * API key for authentication (encrypted at rest)
+   */
+  apiKey: string;
+  /**
+   * Base URL for the provider API (e.g., https://api.openai.com/v1)
+   */
+  apiEndpoint?: string | null;
+  /**
+   * API version to use (e.g., 2024-01-01)
+   */
+  apiVersion?: string | null;
+  /**
+   * Provider region for services that support it (e.g., us-east-1)
+   */
+  region?: string | null;
+  /**
+   * Basic list of models offered by this provider. For detailed model management, use the LLM Models collection.
+   */
+  models?:
+    | {
+        /**
+         * Unique identifier for the model (e.g., gpt-4, claude-3-opus-20240229)
+         */
+        modelId: string;
+        /**
+         * Human-readable model name
+         */
+        displayName: string;
+        /**
+         * Maximum tokens supported by this model
+         */
+        maxTokens?: number | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Maximum requests per time window
+   */
+  rateLimit?: number | null;
+  /**
+   * Time window in seconds for rate limiting
+   */
+  rateLimitWindow?: number | null;
+  /**
+   * Total quota limit ( informational for now)
+   */
+  quota?: number | null;
+  /**
+   * Average cost per million tokens for this provider
+   */
+  costPerMillTokens?: number | null;
+  /**
+   * Enable or disable this provider. Disabled providers are not available for API calls.
+   */
+  enabled?: boolean | null;
+  /**
+   * Tags for organizing and categorizing providers
+   */
+  tags?:
+    | {
+        tag?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  meta?: {
+    title?: string | null;
+    description?: string | null;
+  };
+  publishedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "llm-models".
+ */
+export interface LlmModel {
+  id: number;
+  /**
+   * Human-readable name for this model (e.g., "GPT-4", "Claude 3 Opus")
+   */
+  displayName: string;
+  /**
+   * When enabled, the slug will auto-generate from the title field on save and autosave.
+   */
+  generateSlug?: boolean | null;
+  slug: string;
+  /**
+   * Unique identifier for the model (e.g., gpt-4, claude-3-opus-20240229)
+   */
+  modelId: string;
+  /**
+   * Detailed description of the model
+   */
+  description?: string | null;
+  /**
+   * The LLM provider that offers this model
+   */
+  provider: number | LlmProvider;
+  /**
+   * Maximum context window in tokens (0 for unlimited)
+   */
+  contextLength?: number | null;
+  /**
+   * Maximum tokens the model can generate
+   */
+  maxTokens?: number | null;
+  /**
+   * Whether the model supports streaming responses
+   */
+  supportsStreaming?: boolean | null;
+  /**
+   * Whether the model supports function calling / tools
+   */
+  supportsFunctionCalling?: boolean | null;
+  /**
+   * Simple average cost per million tokens
+   */
+  costPerMillTokens?: number | null;
+  /**
+   * Cost per input token
+   */
+  costPerInputToken?: number | null;
+  /**
+   * Cost per output token
+   */
+  costPerOutputToken?: number | null;
+  /**
+   * Tags for organizing and categorizing models
+   */
+  tags?:
+    | {
+        tag?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * List of specific capabilities (e.g., vision, code, reasoning, multimodal)
+   */
+  capabilities?:
+    | {
+        capability?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  meta?: {
+    title?: string | null;
+    description?: string | null;
+  };
+  publishedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "redirects".
  */
 export interface Redirect {
@@ -835,10 +1181,23 @@ export interface Search {
   id: number;
   title?: string | null;
   priority?: number | null;
-  doc: {
-    relationTo: 'posts';
-    value: number | Post;
-  };
+  doc:
+    | {
+        relationTo: 'posts';
+        value: number | Post;
+      }
+    | {
+        relationTo: 'prompts';
+        value: number | Prompt;
+      }
+    | {
+        relationTo: 'llm-providers';
+        value: number | LlmProvider;
+      }
+    | {
+        relationTo: 'llm-models';
+        value: number | LlmModel;
+      };
   slug?: string | null;
   meta?: {
     title?: string | null;
@@ -993,6 +1352,22 @@ export interface PayloadLockedDocument {
         value: number | User;
       } | null)
     | ({
+        relationTo: 'prompts';
+        value: number | Prompt;
+      } | null)
+    | ({
+        relationTo: 'prompt-tests';
+        value: number | PromptTest;
+      } | null)
+    | ({
+        relationTo: 'llm-providers';
+        value: number | LlmProvider;
+      } | null)
+    | ({
+        relationTo: 'llm-models';
+        value: number | LlmModel;
+      } | null)
+    | ({
         relationTo: 'redirects';
         value: number | Redirect;
       } | null)
@@ -1095,7 +1470,6 @@ export interface PagesSelect<T extends boolean = true> {
     | T
     | {
         title?: T;
-        image?: T;
         description?: T;
       };
   publishedAt?: T;
@@ -1203,7 +1577,6 @@ export interface PostsSelect<T extends boolean = true> {
     | T
     | {
         title?: T;
-        image?: T;
         description?: T;
       };
   publishedAt?: T;
@@ -1356,6 +1729,163 @@ export interface UsersSelect<T extends boolean = true> {
         createdAt?: T;
         expiresAt?: T;
       };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompts_select".
+ */
+export interface PromptsSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  content?: T;
+  isPublic?: T;
+  author?: T;
+  modelScores?:
+    | T
+    | {
+        model?: T;
+        score?: T;
+        id?: T;
+      };
+  temperature?: T;
+  maxTokens?: T;
+  topP?: T;
+  frequencyPenalty?: T;
+  presencePenalty?: T;
+  extraConfig?: T;
+  tags?:
+    | T
+    | {
+        tag?: T;
+        id?: T;
+      };
+  meta?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+      };
+  generateSlug?: T;
+  slug?: T;
+  publishedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompt-tests_select".
+ */
+export interface PromptTestsSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  prompt?: T;
+  author?: T;
+  inputVariables?: T;
+  expectedOutput?: T;
+  actualOutput?: T;
+  testConfig?: T;
+  modelUnderTest?: T;
+  executionStatus?: T;
+  executedAt?: T;
+  executionTime?: T;
+  tokensUsed?: T;
+  cost?: T;
+  score?: T;
+  feedback?: T;
+  isVerified?: T;
+  generateSlug?: T;
+  slug?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "llm-providers_select".
+ */
+export interface LlmProvidersSelect<T extends boolean = true> {
+  displayName?: T;
+  generateSlug?: T;
+  slug?: T;
+  providerType?: T;
+  icon?: T;
+  owner?: T;
+  authType?: T;
+  apiKey?: T;
+  apiEndpoint?: T;
+  apiVersion?: T;
+  region?: T;
+  models?:
+    | T
+    | {
+        modelId?: T;
+        displayName?: T;
+        maxTokens?: T;
+        id?: T;
+      };
+  rateLimit?: T;
+  rateLimitWindow?: T;
+  quota?: T;
+  costPerMillTokens?: T;
+  enabled?: T;
+  tags?:
+    | T
+    | {
+        tag?: T;
+        id?: T;
+      };
+  meta?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+      };
+  publishedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "llm-models_select".
+ */
+export interface LlmModelsSelect<T extends boolean = true> {
+  displayName?: T;
+  generateSlug?: T;
+  slug?: T;
+  modelId?: T;
+  description?: T;
+  provider?: T;
+  contextLength?: T;
+  maxTokens?: T;
+  supportsStreaming?: T;
+  supportsFunctionCalling?: T;
+  costPerMillTokens?: T;
+  costPerInputToken?: T;
+  costPerOutputToken?: T;
+  tags?:
+    | T
+    | {
+        tag?: T;
+        id?: T;
+      };
+  capabilities?:
+    | T
+    | {
+        capability?: T;
+        id?: T;
+      };
+  meta?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+      };
+  publishedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1762,6 +2292,22 @@ export interface TaskSchedulePublish {
       | ({
           relationTo: 'posts';
           value: number | Post;
+        } | null)
+      | ({
+          relationTo: 'prompts';
+          value: number | Prompt;
+        } | null)
+      | ({
+          relationTo: 'prompt-tests';
+          value: number | PromptTest;
+        } | null)
+      | ({
+          relationTo: 'llm-providers';
+          value: number | LlmProvider;
+        } | null)
+      | ({
+          relationTo: 'llm-models';
+          value: number | LlmModel;
         } | null);
     global?: string | null;
     user?: (number | null) | User;
