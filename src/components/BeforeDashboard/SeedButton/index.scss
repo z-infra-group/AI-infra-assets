@@ -1,12 +1,168 @@
-.seedButton {
+.seedModules {
+  margin-top: 1rem;
+}
+
+/* Tab Headers */
+.seedTabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 1rem;
+}
+
+.seedTab {
   appearance: none;
-  background: none;
+  background: transparent;
   border: none;
-  padding: 0;
-  text-decoration: underline;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 
   &:hover {
-    cursor: pointer;
-    opacity: 0.85;
+    color: #0070f3;
   }
+
+  &.active {
+    color: #0070f3;
+    border-bottom-color: #0070f3;
+    font-weight: 500;
+  }
+}
+
+.seedTabDescription {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* Tab Content */
+.seedTabContent {
+  position: relative;
+}
+
+.seedTabPanel {
+  display: none;
+
+  &.active {
+    display: block;
+    animation: fadeIn 0.2s ease-in;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Module Groups */
+.seedModuleGroup {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.seedGroupTitle {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.seedGroupDesc {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.seedModuleList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.seedModuleItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: #d1d5db;
+  }
+}
+
+.seedButton {
+  appearance: none;
+  background: #0070f3;
+  border: 1px solid #0070f3;
+  border-radius: 4px;
+  color: white;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: 120px;
+
+  &:hover:not(:disabled) {
+    background: #0051a3;
+    border-color: #0051a3;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+
+    &.seeded {
+      background: #28a745;
+      border-color: #28a745;
+    }
+  }
+
+  &.loading {
+    cursor: wait;
+    opacity: 0.8;
+  }
+
+  &.error {
+    background: #dc3545;
+    border-color: #dc3545;
+  }
+}
+
+.seedDescription {
+  font-size: 0.8rem;
+  color: #374151;
+  flex: 1;
+}
+
+.seedStatus {
+  font-size: 0.75rem;
+  color: #6b7280;
+  min-width: 60px;
+  text-align: right;
+}
+
+.seedDependencies {
+  display: block;
+  font-size: 0.7rem;
+  color: #dc2626;
+  margin-top: 0.25rem;
 }
