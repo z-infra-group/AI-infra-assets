@@ -24,6 +24,10 @@ const dirname = path.dirname(filename)
 
 export default buildConfig({
   admin: {
+    autoLogin: {
+      email: process.env.AUTO_LOGIN_EMAIL,
+      password: process.env.AUTO_LOGIN_PASSWORD,
+    },
     components: {
       // The `BeforeLogin` component renders a message that you see while logging into your admin panel.
       // Feel free to delete this at any time. Simply remove the line below.
@@ -66,7 +70,17 @@ export default buildConfig({
       connectionString: process.env.DATABASE_URL || '',
     },
   }),
-  collections: [Pages, Posts, Media, Categories, Users, Prompts, PromptTests, LLMProviders, LLMModels],
+  collections: [
+    Pages,
+    Posts,
+    Media,
+    Categories,
+    Users,
+    Prompts,
+    PromptTests,
+    LLMProviders,
+    LLMModels,
+  ],
   cors: [getServerSideURL()].filter(Boolean),
   globals: [Header, Footer],
   plugins,
