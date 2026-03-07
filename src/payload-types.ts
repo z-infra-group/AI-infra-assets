@@ -799,6 +799,7 @@ export interface Prompt {
    */
   isPublic?: boolean | null;
   author: number | User;
+  publishedAt?: string | null;
   /**
    * Model compatibility scores (future: integrate with Models collection)
    */
@@ -853,7 +854,6 @@ export interface Prompt {
    */
   generateSlug?: boolean | null;
   slug: string;
-  publishedAt?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -957,6 +957,8 @@ export interface LlmProvider {
     | 'google'
     | 'cohere'
     | 'huggingface'
+    | 'ollama'
+    | 'lm-studio'
     | 'azure-openai'
     | 'aws-bedrock'
     | 'custom';
@@ -968,6 +970,7 @@ export interface LlmProvider {
    * Admin who created this provider
    */
   owner: number | User;
+  publishedAt?: string | null;
   /**
    * Type of authentication required by the provider
    */
@@ -1041,7 +1044,6 @@ export interface LlmProvider {
     title?: string | null;
     description?: string | null;
   };
-  publishedAt?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1740,6 +1742,7 @@ export interface PromptsSelect<T extends boolean = true> {
   content?: T;
   isPublic?: T;
   author?: T;
+  publishedAt?: T;
   modelScores?:
     | T
     | {
@@ -1767,7 +1770,6 @@ export interface PromptsSelect<T extends boolean = true> {
       };
   generateSlug?: T;
   slug?: T;
-  publishedAt?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -1811,6 +1813,7 @@ export interface LlmProvidersSelect<T extends boolean = true> {
   providerType?: T;
   icon?: T;
   owner?: T;
+  publishedAt?: T;
   authType?: T;
   apiKey?: T;
   apiEndpoint?: T;
@@ -1841,7 +1844,6 @@ export interface LlmProvidersSelect<T extends boolean = true> {
         title?: T;
         description?: T;
       };
-  publishedAt?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;

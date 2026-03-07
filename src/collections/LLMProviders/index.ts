@@ -51,6 +51,8 @@ export const LLMProviders: CollectionConfig<'llm-providers'> = {
         { label: 'Google', value: 'google' },
         { label: 'Cohere', value: 'cohere' },
         { label: 'Hugging Face', value: 'huggingface' },
+        { label: 'Ollama', value: 'ollama' },
+        { label: 'LM Studio', value: 'lm-studio' },
         { label: 'Azure OpenAI', value: 'azure-openai' },
         { label: 'AWS Bedrock', value: 'aws-bedrock' },
         { label: 'Custom', value: 'custom' },
@@ -78,6 +80,40 @@ export const LLMProviders: CollectionConfig<'llm-providers'> = {
       admin: {
         position: 'sidebar',
         description: 'Admin who created this provider',
+      },
+    },
+
+    // Published date tracking
+    {
+      name: 'publishedAt',
+      type: 'date',
+      admin: {
+        position: 'sidebar',
+        date: {
+          pickerAppearance: 'dayAndTime',
+        },
+      },
+      hooks: {
+        beforeChange: [
+          ({ siblingData, value }) => {
+            if (siblingData._status === 'published' && !value) {
+              return new Date()
+            }
+            return value
+          },
+        ],
+      },
+    },
+
+    // Provider Testing UI
+    {
+      name: 'testConnection',
+      type: 'ui',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '@/components/TestProviderConnection',
+        },
       },
     },
 
@@ -272,28 +308,6 @@ export const LLMProviders: CollectionConfig<'llm-providers'> = {
           ],
         },
       ],
-    },
-
-    // Published date tracking
-    {
-      name: 'publishedAt',
-      type: 'date',
-      admin: {
-        position: 'sidebar',
-        date: {
-          pickerAppearance: 'dayAndTime',
-        },
-      },
-      hooks: {
-        beforeChange: [
-          ({ siblingData, value }) => {
-            if (siblingData._status === 'published' && !value) {
-              return new Date()
-            }
-            return value
-          },
-        ],
-      },
     },
   ],
   hooks: {

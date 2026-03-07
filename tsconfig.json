@@ -46,6 +46,11 @@
     "next-sitemap.config.cjs"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "**/*.css"
   ],
+  "ts-node": {
+    "transpileOnly": true,
+    "experimentalSpecifierResolution": "node"
+  },
 }

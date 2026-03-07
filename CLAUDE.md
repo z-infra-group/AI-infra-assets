@@ -199,6 +199,76 @@ pnpm generate:importmap  # Generate component import map
   - `costPerOutputToken`: Precise output token cost
 - **Metadata**: Tags and capabilities array for categorization
 
+### Provider Connection Testing
+
+**Admin Panel Integration**:
+- **Test Connection Button**: Added to LLM Providers edit view sidebar
+- **Owner-Only Testing**: Only the provider creator can test connections
+- **Real-Time Validation**: Verify API key and endpoint correctness before using providers
+
+**API Endpoint**:
+- `POST /api/test-llm-provider` - Test provider connectivity
+- Request body: `{ providerId: string }`
+- Response: `{ success, status, responseTime, modelCount, error }`
+- Timeout: 10 seconds (configurable via `PROVIDER_TEST_TIMEOUT` env var)
+
+**Provider-Specific Tests**:
+- **OpenAI**: Fetches `/v1/models` - returns model count
+- **Anthropic**: Sends minimal message to `/v1/messages` - verifies authentication
+- **Google**: Fetches `/v1beta/models` - returns model count
+- **Ollama**: Fetches `/api/tags` - returns local model list
+- **LM Studio**: OpenAI-compatible `/v1/models` endpoint
+- **Azure OpenAI**: Fetches `/openai/deployments` - returns deployment list
+- **AWS Bedrock**: Basic connectivity check (skips model list due to SigV4 complexity)
+- **Custom**: Based on `authType` - attempts connection with appropriate authentication
+
+**Usage Example**:
+```bash
+curl -X POST http://localhost:3000/api/test-llm-provider \
+  -H "Content-Type: application/json" \
+  -H "Cookie: payload-token=<JWT_TOKEN>" \
+  -d '{"providerId": "<provider-id>"}'
+```
+
+**Response Example (Success)**:
+```json
+{
+  "success": true,
+  "status": "authenticated",
+  "responseTime": 234,
+  "modelCount": 156
+}
+```
+
+**Response Example (Error)**:
+```json
+{
+  "success": false,
+  "status": "failed",
+  "responseTime": 1234,
+  "modelCount": null,
+  "error": "Authentication failed: Invalid API key or credentials"
+}
+```
+
+**Security Considerations**:
+- API keys are redacted in logs (only first 8 characters shown)
+- Provider ownership is validated before testing
+- All provider API calls happen server-side
+- Timeout prevents hanging on unreachable endpoints
+
+**Component Registration Pattern**:
+```typescript
+// src/collections/LLMProviders/index.ts
+import { TestProviderConnection } from '../../admin/components/TestProviderConnection'
+
+admin: {
+  components: {
+    TestProviderConnection,
+  },
+}
+```
+
 ### Access Control Security
 
 **Current Implementation** (TODO: Enhance with role-based access):

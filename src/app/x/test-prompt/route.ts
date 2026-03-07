@@ -1,0 +1,834 @@
+import { NextResponse } from 'next/server'
+import { getPayload } from 'payload'
+import config from '@payload-config'
+import { headers } from 'next/headers'
+
+// DO NOT LOG: Full prompt content in production. Truncate to 100 chars.
+
+const DEFAULT_TIMEOUT = 60000 // 60 seconds for LLM inference
+const timeout = Number(process.env.PROMPT_TEST_TIMEOUT) || DEFAULT_TIMEOUT
+const COST_WARNING_THRESHOLD = 0.10 // USD
+
+interface TestRequest {
+  promptId: string
+  providerId: string
+  modelId: string
+}
+
+interface TestResponse {
+  success: boolean
+  generatedText: string | null
+  responseTime: number
+  tokensUsed: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  } | null
+  estimatedCost: number | null
+  modelUsed: string | null
+  error?: string
+}
+
+/**
+ * POST /api/test-prompt
+ *
+ * Tests a prompt by sending it to the configured LLM provider.
+ * Only the prompt owner can execute this test.
+ */
+export async function POST(request: Request) {
+  const startTime = Date.now()
+  const payload = await getPayload({ config })
+  const requestHeaders = await headers()
+
+  try {
+    // Authenticate user
+    const { user } = await payload.auth({ headers: requestHeaders })
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // Parse request body
+    const body: TestRequest = await request.json()
+    const { promptId, providerId, modelId } = body
+
+    if (!promptId) {
+      return NextResponse.json(
+        { success: false, error: 'promptId is required' },
+        { status: 400 }
+      )
+    }
+
+    if (!providerId) {
+      return NextResponse.json(
+        { success: false, error: 'providerId is required' },
+        { status: 400 }
+      )
+    }
+
+    if (!modelId) {
+      return NextResponse.json(
+        { success: false, error: 'modelId is required' },
+        { status: 400 }
+      )
+    }
+
+    // Fetch prompt to verify ownership
+    const prompt = await payload.findByID({
+      collection: 'prompts',
+      id: promptId,
+      user,
+      overrideAccess: false,
+      depth: 0,
+    })
+
+    if (!prompt) {
+      return NextResponse.json(
+        { success: false, error: 'Prompt not found' },
+        { status: 404 }
+      )
+    }
+
+    // Verify ownership - only owner can test
+    const authorId = (prompt as any).author?.id || (prompt as any).author
+    if (!authorId || authorId !== user.id) {
+      console.log('Owner check failed:', {
+        promptAuthorId: authorId,
+        userId: user.id,
+        authorIdType: typeof authorId,
+        userIdType: typeof user.id
+      })
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Only the prompt owner can test it' },
+        { status: 403 }
+      )
+    }
+
+    // Fetch provider directly by ID
+    const provider = await payload.findByID({
+      collection: 'llm-providers',
+      id: providerId,
+      user,
+      overrideAccess: false,
+      depth: 0,
+    })
+
+    if (!provider) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Provider not found. Please select a valid provider.',
+        },
+        { status: 404 }
+      )
+    }
+
+    // Verify provider ownership
+    const ownerId = (provider as any).owner?.id || (provider as any).owner
+    if (!ownerId || ownerId !== user.id) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: You can only use your own providers' },
+        { status: 403 }
+      )
+    }
+
+    // Check if provider is enabled
+    if (!(provider as any).enabled) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `The provider "${(provider as any).displayName}" is disabled. Please enable it in the provider configuration.`,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Verify the model exists in the provider's models list
+    const providerModels = (provider as any).models || []
+    const modelExists = providerModels.some((m: any) => m.modelId === modelId)
+
+    if (!modelExists) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Model "${modelId}" not found in provider "${(provider as any).displayName}". Please add the model to the provider configuration.`,
+        },
+        { status: 404 }
+      )
+    }
+
+    // Get model details from provider's models array
+    const modelDoc = providerModels.find((m: any) => m.modelId === modelId)
+
+    // Execute prompt test
+    const result = await testPrompt(
+      (prompt as any).content,
+      prompt as any,
+      provider,
+      modelId,
+      modelDoc,
+      timeout
+    )
+
+    // Add response time and provider info
+    result.responseTime = Date.now() - startTime
+    result.providerUsed = (provider as any).displayName || providerId
+
+    // Add cost warning if applicable
+    if (result.estimatedCost && result.estimatedCost > COST_WARNING_THRESHOLD) {
+      console.warn(`Expensive test: $${result.estimatedCost.toFixed(4)} (threshold: $${COST_WARNING_THRESHOLD})`)
+    }
+
+    return NextResponse.json(result)
+  } catch (error) {
+    // Log error without sensitive details
+    console.error('Prompt test error:', error instanceof Error ? error.message : String(error))
+
+    return NextResponse.json(
+      {
+        success: false,
+        generatedText: null,
+        responseTime: Date.now() - startTime,
+        tokensUsed: null,
+        estimatedCost: null,
+        modelUsed: null,
+        error: 'An unexpected error occurred during prompt test',
+      } as TestResponse,
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * Tests a prompt by calling the provider's inference API
+ */
+async function testPrompt(
+  content: string,
+  prompt: any,
+  provider: any,
+  modelId: string,
+  modelDoc: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const { providerType, apiKey, apiEndpoint } = provider
+
+  // Truncate prompt for logging (first 100 chars)
+  const truncatedPrompt = content.slice(0, 100) + (content.length > 100 ? '...' : '')
+  console.log(`Testing prompt: "${truncatedPrompt}" with model ${modelId}`)
+
+  try {
+    switch (providerType) {
+      case 'openai':
+        return await testWithOpenAI(content, prompt, apiKey, apiEndpoint, modelId, modelDoc, provider, timeoutMs)
+      case 'anthropic':
+        return await testWithAnthropic(content, prompt, apiKey, apiEndpoint, modelId, modelDoc, provider, timeoutMs)
+      case 'google':
+        return await testWithGoogle(content, prompt, apiKey, apiEndpoint, modelId, modelDoc, provider, timeoutMs)
+      case 'ollama':
+        return await testWithOllama(content, prompt, apiEndpoint, modelId, modelDoc, provider, timeoutMs)
+      case 'cohere':
+        // Cohere uses OpenAI-compatible format
+        return await testWithCustomProvider(content, prompt, provider, modelId, modelDoc, timeoutMs)
+      case 'huggingface':
+        // Hugging Face uses OpenAI-compatible format
+        return await testWithCustomProvider(content, prompt, provider, modelId, modelDoc, timeoutMs)
+      case 'lm-studio': // OpenAI-compatible
+      case 'custom':
+        return await testWithCustomProvider(content, prompt, provider, modelId, modelDoc, timeoutMs)
+      case 'azure-openai':
+        return await testWithAzureOpenAI(content, prompt, provider, modelId, modelDoc, timeoutMs)
+      case 'aws-bedrock':
+        return await testWithBedrock(content, prompt, provider, modelId, modelDoc, timeoutMs)
+      default:
+        return {
+          success: false,
+          generatedText: null,
+          tokensUsed: null,
+          estimatedCost: null,
+          modelUsed: modelId,
+          error: `Unsupported provider type: ${providerType}`,
+        }
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        return {
+          success: false,
+          generatedText: null,
+          tokensUsed: null,
+          estimatedCost: null,
+          modelUsed: modelId,
+          error: `Request timeout: The provider took too long to respond (${timeoutMs / 1000}s limit)`,
+        }
+      }
+
+      if (error.message.includes('401') || error.message.includes('403')) {
+        return {
+          success: false,
+          generatedText: null,
+          tokensUsed: null,
+          estimatedCost: null,
+          modelUsed: modelId,
+          error: 'Authentication failed: Check the provider API key. Try testing the provider connection first.',
+        }
+      }
+
+      if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+        return {
+          success: false,
+          generatedText: null,
+          tokensUsed: null,
+          estimatedCost: null,
+          modelUsed: modelId,
+          error: 'Connection error: Unable to reach the provider. Test the provider connection first.',
+        }
+      }
+    }
+
+    return {
+      success: false,
+      generatedText: null,
+      tokensUsed: null,
+      estimatedCost: null,
+      modelUsed: modelId,
+      error: 'Prompt test failed: An unexpected error occurred',
+    }
+  }
+}
+
+/**
+ * Test with OpenAI-compatible API
+ */
+async function testWithOpenAI(
+  content: string,
+  prompt: any,
+  apiKey: string,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'https://api.openai.com/v1'
+  const url = `${endpoint}/chat/completions`
+
+  // Build request with prompt parameters
+  const requestBody = {
+    model: modelId,
+    messages: [{ role: 'user', content }],
+    temperature: prompt.temperature ?? 0.7,
+    max_tokens: prompt.maxTokens ?? 1000,
+    top_p: prompt.topP ?? 1,
+    frequency_penalty: prompt.frequencyPenalty ?? 0,
+    presence_penalty: prompt.presencePenalty ?? 0,
+    ...(prompt.extraConfig || {}), // Merge extra config
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Provider API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.choices?.[0]?.message?.content || ''
+    const usage = data.usage
+
+    let tokensUsed = null
+    let estimatedCost = null
+
+    if (usage) {
+      tokensUsed = {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0,
+      }
+
+      // Calculate cost
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Anthropic Claude API
+ */
+async function testWithAnthropic(
+  content: string,
+  prompt: any,
+  apiKey: string,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'https://api.anthropic.com/v1'
+  const url = `${endpoint}/messages`
+
+  const maxTokens = prompt.maxTokens ?? 1000
+
+  const requestBody = {
+    model: modelId,
+    messages: [{ role: 'user', content }],
+    max_tokens: maxTokens,
+    temperature: prompt.temperature ?? 0.7,
+    top_p: prompt.topP ?? 1,
+    ...(prompt.extraConfig || {}),
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Provider API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.content?.[0]?.text || ''
+    const usage = data.usage
+
+    let tokensUsed = null
+    let estimatedCost = null
+
+    if (usage) {
+      tokensUsed = {
+        promptTokens: usage.input_tokens || 0,
+        completionTokens: usage.output_tokens || 0,
+        totalTokens: (usage.input_tokens || 0) + (usage.output_tokens || 0),
+      }
+
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Google Gemini API
+ */
+async function testWithGoogle(
+  content: string,
+  prompt: any,
+  apiKey: string,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'https://generativelanguage.googleapis.com/v1beta'
+  const url = `${endpoint}/models/${modelId}:generateContent?key=${apiKey}`
+
+  const requestBody = {
+    contents: [{ parts: [{ text: content }] }],
+    generationConfig: {
+      temperature: prompt.temperature ?? 0.7,
+      maxOutputTokens: prompt.maxTokens ?? 1000,
+      topP: prompt.topP ?? 1,
+      ...(prompt.extraConfig || {}),
+    },
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Provider API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+    // Gemini usage format
+    let tokensUsed = null
+    let estimatedCost = null
+
+    const metadata = data.candidates?.[0]?.usageMetadata || data.usageMetadata
+    if (metadata) {
+      tokensUsed = {
+        promptTokens: metadata.promptTokenCount || metadata.prompt_tokens || 0,
+        completionTokens: metadata.candidatesTokenCount || metadata.completion_tokens || 0,
+        totalTokens: metadata.totalTokenCount || metadata.total_tokens || 0,
+      }
+
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Ollama API
+ */
+async function testWithOllama(
+  content: string,
+  prompt: any,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'http://localhost:11434'
+  const url = `${endpoint}/api/generate`
+
+  const requestBody = {
+    model: modelId,
+    prompt: content,
+    stream: false,
+    options: {
+      temperature: prompt.temperature ?? 0.7,
+      num_predict: prompt.maxTokens ?? 1000,
+      top_p: prompt.topP ?? 1,
+      ...(prompt.extraConfig || {}),
+    },
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      throw new Error(`Ollama API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.response || ''
+
+    // Ollama may or may not return token counts
+    let tokensUsed = null
+    if (data.prompt_eval_count && data.eval_count) {
+      tokensUsed = {
+        promptTokens: data.prompt_eval_count,
+        completionTokens: data.eval_count,
+        totalTokens: data.prompt_eval_count + data.eval_count,
+      }
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost: 0, // Local model - no cost
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with custom provider (assumes OpenAI-compatible format)
+ */
+async function testWithCustomProvider(
+  content: string,
+  prompt: any,
+  provider: any,
+  modelId: string,
+  modelDoc: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const { apiEndpoint, authType, apiKey } = provider
+
+  if (!apiEndpoint) {
+    return {
+      success: false,
+      generatedText: null,
+      tokensUsed: null,
+      estimatedCost: null,
+      modelUsed: modelId,
+      error: 'API endpoint is required for custom providers',
+    }
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  if (authType === 'api-key' && apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  } else if (authType === 'bearer' && apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  }
+
+  // Assume OpenAI-compatible format for custom providers
+  const requestBody = {
+    model: modelId,
+    messages: [{ role: 'user', content }],
+    temperature: prompt.temperature ?? 0.7,
+    max_tokens: prompt.maxTokens ?? 1000,
+    ...(prompt.extraConfig || {}),
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(`${apiEndpoint}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      // Return error with status code
+      const errorText = await response.text().catch(() => 'Unknown error')
+      throw new Error(`Provider API returned error: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.choices?.[0]?.message?.content || 'Response received'
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed: null,
+      estimatedCost: null,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Azure OpenAI
+ */
+async function testWithAzureOpenAI(
+  content: string,
+  prompt: any,
+  provider: any,
+  modelId: string,
+  modelDoc: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const { apiKey, apiEndpoint, apiVersion } = provider
+  const version = apiVersion || '2024-02-01'
+
+  if (!apiEndpoint) {
+    return {
+      success: false,
+      generatedText: null,
+      tokensUsed: null,
+      estimatedCost: null,
+      modelUsed: modelId,
+      error: 'API endpoint is required for Azure OpenAI',
+    }
+  }
+
+  const url = `${apiEndpoint}/openai/deployments/${modelId}/chat/completions?api-version=${version}`
+
+  const requestBody = {
+    messages: [{ role: 'user', content }],
+    temperature: prompt.temperature ?? 0.7,
+    max_tokens: prompt.maxTokens ?? 1000,
+    ...(prompt.extraConfig || {}),
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Azure OpenAI returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.choices?.[0]?.message?.content || ''
+    const usage = data.usage
+
+    let tokensUsed = null
+    let estimatedCost = null
+
+    if (usage) {
+      tokensUsed = {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0,
+      }
+
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with AWS Bedrock
+ */
+async function testWithBedrock(
+  content: string,
+  prompt: any,
+  provider: any,
+  modelId: string,
+  modelDoc: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  // AWS Bedrock requires complex SigV4 signing
+  // For now, return an error indicating this is not supported
+  return {
+    success: false,
+    generatedText: null,
+    tokensUsed: null,
+    estimatedCost: null,
+    modelUsed: modelId,
+    error: 'AWS Bedrock testing is not yet supported due to complex SigV4 signing requirements. Please test manually.',
+  }
+}
+
+/**
+ * Calculate cost based on token usage and provider pricing
+ */
+function calculateCost(
+  tokensUsed: { promptTokens: number; completionTokens: number; totalTokens: number },
+  modelDoc: any,
+  provider: any
+): number {
+  // If modelDoc has per-token pricing (from LLMModels collection)
+  if (modelDoc?.costPerInputToken && modelDoc?.costPerOutputToken) {
+    const inputCost = (tokensUsed.promptTokens * modelDoc.costPerInputToken) / 1000000
+    const outputCost = (tokensUsed.completionTokens * modelDoc.costPerOutputToken) / 1000000
+    return inputCost + outputCost
+  }
+
+  // Fall back to model average pricing
+  if (modelDoc?.costPerMillTokens) {
+    return (tokensUsed.totalTokens * modelDoc.costPerMillTokens) / 1000000
+  }
+
+  // Fall back to provider average pricing
+  if (provider?.costPerMillTokens) {
+    return (tokensUsed.totalTokens * provider.costPerMillTokens) / 1000000
+  }
+
+  // No pricing data available
+  return 0
+}

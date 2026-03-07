@@ -73,6 +73,40 @@ export const Prompts: CollectionConfig<'prompts'> = {
       },
     },
 
+    // Published date tracking
+    {
+      name: 'publishedAt',
+      type: 'date',
+      admin: {
+        position: 'sidebar',
+        date: {
+          pickerAppearance: 'dayAndTime',
+        },
+      },
+      hooks: {
+        beforeChange: [
+          ({ siblingData, value }) => {
+            if (siblingData._status === 'published' && !value) {
+              return new Date()
+            }
+            return value
+          },
+        ],
+      },
+    },
+
+    // Prompt Testing UI
+    {
+      name: 'testPrompt',
+      type: 'ui',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '@/components/TestPromptButton',
+        },
+      },
+    },
+
     // Model Compatibility
     {
       name: 'modelScores',
@@ -224,26 +258,6 @@ export const Prompts: CollectionConfig<'prompts'> = {
     slugField({
       position: undefined,
     }),
-    {
-      name: 'publishedAt',
-      type: 'date',
-      admin: {
-        position: 'sidebar',
-        date: {
-          pickerAppearance: 'dayAndTime',
-        },
-      },
-      hooks: {
-        beforeChange: [
-          ({ siblingData, value }) => {
-            if (siblingData._status === 'published' && !value) {
-              return new Date()
-            }
-            return value
-          },
-        ],
-      },
-    },
   ],
   hooks: {
     afterChange: [revalidatePrompt],
