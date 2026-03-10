@@ -22,7 +22,13 @@
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/azure": "^3.0.42",
+    "@ai-sdk/cohere": "^3.0.25",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
     "@payloadcms/admin-bar": "3.78.0",
+    "@payloadcms/db-postgres": "3.78.0",
     "@payloadcms/live-preview-react": "3.78.0",
     "@payloadcms/next": "3.78.0",
     "@payloadcms/plugin-form-builder": "3.78.0",
@@ -36,6 +42,7 @@
     "@radix-ui/react-label": "^2.0.2",
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-slot": "^1.0.2",
+    "ai": "6.0.116",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cross-env": "^7.0.3",
@@ -45,14 +52,14 @@
     "lucide-react": "0.563.0",
     "next": "15.4.11",
     "next-sitemap": "^4.2.3",
+    "ollama-ai-provider-v2": "3.4.0",
     "payload": "3.78.0",
     "prism-react-renderer": "^2.3.1",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-hook-form": "7.71.1",
     "sharp": "0.34.2",
-    "tailwind-merge": "^3.4.0",
-    "@payloadcms/db-postgres": "3.78.0"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

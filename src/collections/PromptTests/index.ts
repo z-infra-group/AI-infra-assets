@@ -133,6 +133,26 @@ export const PromptTests: CollectionConfig<'prompt-tests'> = {
               defaultValue: 'pending',
             },
             {
+              name: 'failureReason',
+              type: 'select',
+              label: 'Failure Reason',
+              options: [
+                { label: 'Connection Error', value: 'connection_error' },
+                { label: 'Authentication Failed', value: 'authentication_failed' },
+                { label: 'Rate Limit Exceeded', value: 'rate_limit_exceeded' },
+                { label: 'Timeout', value: 'timeout' },
+                { label: 'Model Not Found', value: 'model_not_found' },
+                { label: 'Validation Error', value: 'validation_error' },
+                { label: 'Provider Error', value: 'provider_error' },
+                { label: 'Unknown', value: 'unknown' },
+              ],
+              defaultValue: 'unknown',
+              admin: {
+                description: 'Categorized reason for test failure (only for failed tests)',
+                condition: (data) => data.executionStatus === 'failed',
+              },
+            },
+            {
               name: 'executedAt',
               type: 'date',
               label: 'Executed At',

@@ -12,80 +12,6 @@ const timeout = Number(process.env.PROMPT_TEST_TIMEOUT) || DEFAULT_TIMEOUT
 const COST_WARNING_THRESHOLD = 0.10 // USD
 const ENABLE_AUTO_PROMPT_TEST_RECORD = process.env.ENABLE_AUTO_PROMPT_TEST_RECORD !== 'false'
 
-/**
- * Categorizes test failure into specific types for better tracking
- */
-type FailureReason =
-  | 'connection_error'
-  | 'authentication_failed'
-  | 'rate_limit_exceeded'
-  | 'timeout'
-  | 'model_not_found'
-  | 'validation_error'
-  | 'provider_error'
-  | 'unknown'
-
-/**
- * Determines the failure reason based on error message and context
- */
-function determineFailureReason(error: any, httpStatus?: number): FailureReason {
-  const errorMessage = error?.message || String(error)
-
-  // Check for timeout
-  if (error.name === 'AbortError' || errorMessage.includes('timeout')) {
-    return 'timeout'
-  }
-
-  // Check for authentication errors (401, 403)
-  if (
-    errorMessage.includes('401') ||
-    errorMessage.includes('403') ||
-    errorMessage.includes('authentication') ||
-    errorMessage.includes('unauthorized') ||
-    errorMessage.includes('forbidden')
-  ) {
-    return 'authentication_failed'
-  }
-
-  // Check for rate limit errors (429)
-  if (
-    errorMessage.includes('429') ||
-    errorMessage.includes('rate limit') ||
-    errorMessage.includes('rate-limit')
-  ) {
-    return 'rate_limit_exceeded'
-  }
-
-  // Check for connection errors
-  if (
-    errorMessage.includes('ECONNREFUSED') ||
-    errorMessage.includes('fetch failed') ||
-    errorMessage.includes('network') ||
-    errorMessage.includes('ENOTFOUND') ||
-    error.name === 'TypeError'
-  ) {
-    return 'connection_error'
-  }
-
-  // Check for validation errors (400, model not found)
-  if (
-    errorMessage.includes('400') ||
-    errorMessage.includes('validation') ||
-    errorMessage.includes('invalid') ||
-    errorMessage.includes('not found')
-  ) {
-    return 'model_not_found'
-  }
-
-  // Check for provider errors (500, 503, etc.)
-  if (httpStatus && httpStatus >= 500) {
-    return 'provider_error'
-  }
-
-  // Default to unknown
-  return 'unknown'
-}
-
 interface TestRequest {
   promptId: string
   providerId: string
@@ -295,7 +221,7 @@ export async function POST(request: Request) {
             slug: `${promptId}-${modelId}-${Date.now()}`, // Generate unique slug
             prompt: parseInt(promptId, 10), // Convert string ID to number for relationship
             author: user.id,
-            actualOutput: result.generatedText || result.error || '',
+            actualOutput: result.generatedText,
             testConfig: {
               temperature: (prompt as any).temperature,
               maxTokens: (prompt as any).maxTokens,
@@ -309,8 +235,6 @@ export async function POST(request: Request) {
             executionTime: result.responseTime,
             tokensUsed: result.tokensUsed ? result.tokensUsed.totalTokens : null,
             cost: result.estimatedCost,
-            // Failure reason for failed tests
-            failureReason: result.success ? null : determineFailureReason(result.error),
             // Manual fields set to null
             score: null,
             feedback: null,
@@ -365,8 +289,8 @@ async function testPrompt(
   console.log(`Testing prompt: "${truncatedPrompt}" with model ${modelId}`)
 
   try {
-    // Create AI SDK model getter function
-    const getModel = createAISDKProvider(provider)
+    // Create AI SDK provider instance
+    const aiProvider = createAISDKProvider(provider)
 
     // Build parameters from prompt configuration
     const parameters: any = {
@@ -394,9 +318,9 @@ async function testPrompt(
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
-      // Call AI SDK generateText with the model
+      // Call AI SDK generateText
       const { text, usage } = await generateText({
-        model: getModel(modelId),
+        model: aiProvider,
         ...parameters,
         abortSignal: controller.signal,
       })
@@ -406,16 +330,10 @@ async function testPrompt(
       // Extract token counts from AI SDK response
       let tokensUsed = null
       if (usage) {
-        // LanguageModelUsage has totalTokens
-        // Some providers may also have promptTokens and completionTokens
-        const promptTk = (usage as any).promptTokens || (usage as any).prompt_tokens || 0
-        const completionTk = (usage as any).completionTokens || (usage as any).completion_tokens || 0
-        const totalTk = usage.totalTokens || 0
-
         tokensUsed = {
-          promptTokens: promptTk,
-          completionTokens: completionTk,
-          totalTokens: totalTk || (promptTk + completionTk),
+          promptTokens: usage.promptTokens || 0,
+          completionTokens: usage.completionTokens || 0,
+          totalTokens: (usage.promptTokens || 0) + (usage.completionTokens || 0),
         }
       }
 
@@ -524,6 +442,508 @@ async function testPrompt(
       modelUsed: modelId,
       error: `Prompt test failed: ${errorMessage}`,
     }
+  }
+}
+
+async function testWithOpenAI(
+  content: string,
+  prompt: any,
+  apiKey: string,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'https://api.openai.com/v1'
+  const url = `${endpoint}/chat/completions`
+
+  // Build request with prompt parameters
+  const requestBody = {
+    model: modelId,
+    messages: [{ role: 'user', content }],
+    temperature: prompt.temperature ?? 0.7,
+    max_tokens: prompt.maxTokens ?? 1000,
+    top_p: prompt.topP ?? 1,
+    frequency_penalty: prompt.frequencyPenalty ?? 0,
+    presence_penalty: prompt.presencePenalty ?? 0,
+    ...(prompt.extraConfig || {}), // Merge extra config
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Provider API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.choices?.[0]?.message?.content || ''
+    const usage = data.usage
+
+    let tokensUsed = null
+    let estimatedCost = null
+
+    if (usage) {
+      tokensUsed = {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0,
+      }
+
+      // Calculate cost
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Anthropic Claude API
+ */
+async function testWithAnthropic(
+  content: string,
+  prompt: any,
+  apiKey: string,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'https://api.anthropic.com/v1'
+  const url = `${endpoint}/messages`
+
+  const maxTokens = prompt.maxTokens ?? 1000
+
+  const requestBody = {
+    model: modelId,
+    messages: [{ role: 'user', content }],
+    max_tokens: maxTokens,
+    temperature: prompt.temperature ?? 0.7,
+    top_p: prompt.topP ?? 1,
+    ...(prompt.extraConfig || {}),
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Provider API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.content?.[0]?.text || ''
+    const usage = data.usage
+
+    let tokensUsed = null
+    let estimatedCost = null
+
+    if (usage) {
+      tokensUsed = {
+        promptTokens: usage.input_tokens || 0,
+        completionTokens: usage.output_tokens || 0,
+        totalTokens: (usage.input_tokens || 0) + (usage.output_tokens || 0),
+      }
+
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Google Gemini API
+ */
+async function testWithGoogle(
+  content: string,
+  prompt: any,
+  apiKey: string,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'https://generativelanguage.googleapis.com/v1beta'
+  const url = `${endpoint}/models/${modelId}:generateContent?key=${apiKey}`
+
+  const requestBody = {
+    contents: [{ parts: [{ text: content }] }],
+    generationConfig: {
+      temperature: prompt.temperature ?? 0.7,
+      maxOutputTokens: prompt.maxTokens ?? 1000,
+      topP: prompt.topP ?? 1,
+      ...(prompt.extraConfig || {}),
+    },
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Provider API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+    // Gemini usage format
+    let tokensUsed = null
+    let estimatedCost = null
+
+    const metadata = data.candidates?.[0]?.usageMetadata || data.usageMetadata
+    if (metadata) {
+      tokensUsed = {
+        promptTokens: metadata.promptTokenCount || metadata.prompt_tokens || 0,
+        completionTokens: metadata.candidatesTokenCount || metadata.completion_tokens || 0,
+        totalTokens: metadata.totalTokenCount || metadata.total_tokens || 0,
+      }
+
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Ollama API
+ */
+async function testWithOllama(
+  content: string,
+  prompt: any,
+  apiEndpoint: string | undefined,
+  modelId: string,
+  modelDoc: any,
+  provider: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const endpoint = apiEndpoint || 'http://localhost:11434'
+  const url = `${endpoint}/api/generate`
+
+  const requestBody = {
+    model: modelId,
+    prompt: content,
+    stream: false,
+    options: {
+      temperature: prompt.temperature ?? 0.7,
+      num_predict: prompt.maxTokens ?? 1000,
+      top_p: prompt.topP ?? 1,
+      ...(prompt.extraConfig || {}),
+    },
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      throw new Error(`Ollama API returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.response || ''
+
+    // Ollama may or may not return token counts
+    let tokensUsed = null
+    if (data.prompt_eval_count && data.eval_count) {
+      tokensUsed = {
+        promptTokens: data.prompt_eval_count,
+        completionTokens: data.eval_count,
+        totalTokens: data.prompt_eval_count + data.eval_count,
+      }
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost: 0, // Local model - no cost
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with custom provider (assumes OpenAI-compatible format)
+ */
+async function testWithCustomProvider(
+  content: string,
+  prompt: any,
+  provider: any,
+  modelId: string,
+  modelDoc: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const { apiEndpoint, authType, apiKey } = provider
+
+  if (!apiEndpoint) {
+    return {
+      success: false,
+      generatedText: null,
+      tokensUsed: null,
+      estimatedCost: null,
+      modelUsed: modelId,
+      error: 'API endpoint is required for custom providers',
+    }
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  if (authType === 'api-key' && apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  } else if (authType === 'bearer' && apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  }
+
+  // Assume OpenAI-compatible format for custom providers
+  const requestBody = {
+    model: modelId,
+    messages: [{ role: 'user', content }],
+    temperature: prompt.temperature ?? 0.7,
+    max_tokens: prompt.maxTokens ?? 1000,
+    ...(prompt.extraConfig || {}),
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(`${apiEndpoint}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      // Return error with status code
+      const errorText = await response.text().catch(() => 'Unknown error')
+      throw new Error(`Provider API returned error: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.choices?.[0]?.message?.content || 'Response received'
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed: null,
+      estimatedCost: null,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with Azure OpenAI
+ */
+async function testWithAzureOpenAI(
+  content: string,
+  prompt: any,
+  provider: any,
+  modelId: string,
+  modelDoc: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  const { apiKey, apiEndpoint, apiVersion } = provider
+  const version = apiVersion || '2024-02-01'
+
+  if (!apiEndpoint) {
+    return {
+      success: false,
+      generatedText: null,
+      tokensUsed: null,
+      estimatedCost: null,
+      modelUsed: modelId,
+      error: 'API endpoint is required for Azure OpenAI',
+    }
+  }
+
+  const url = `${apiEndpoint}/openai/deployments/${modelId}/chat/completions?api-version=${version}`
+
+  const requestBody = {
+    messages: [{ role: 'user', content }],
+    temperature: prompt.temperature ?? 0.7,
+    max_tokens: prompt.maxTokens ?? 1000,
+    ...(prompt.extraConfig || {}),
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`401`)
+      }
+      throw new Error(`Azure OpenAI returned error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const generatedText = data.choices?.[0]?.message?.content || ''
+    const usage = data.usage
+
+    let tokensUsed = null
+    let estimatedCost = null
+
+    if (usage) {
+      tokensUsed = {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0,
+      }
+
+      estimatedCost = calculateCost(tokensUsed, modelDoc, provider)
+    }
+
+    return {
+      success: true,
+      generatedText,
+      tokensUsed,
+      estimatedCost,
+      modelUsed: modelId,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Test with AWS Bedrock
+ */
+async function testWithBedrock(
+  content: string,
+  prompt: any,
+  provider: any,
+  modelId: string,
+  modelDoc: any,
+  timeoutMs: number
+): Promise<Omit<TestResponse, 'responseTime'>> {
+  // AWS Bedrock requires complex SigV4 signing
+  // For now, return an error indicating this is not supported
+  return {
+    success: false,
+    generatedText: null,
+    tokensUsed: null,
+    estimatedCost: null,
+    modelUsed: modelId,
+    error: 'AWS Bedrock testing is not yet supported due to complex SigV4 signing requirements. Please test manually.',
   }
 }
 

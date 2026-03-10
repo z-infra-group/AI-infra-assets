@@ -899,6 +899,21 @@ export interface PromptTest {
    */
   modelUnderTest?: string | null;
   executionStatus?: ('pending' | 'running' | 'completed' | 'failed') | null;
+  /**
+   * Categorized reason for test failure (only for failed tests)
+   */
+  failureReason?:
+    | (
+        | 'connection_error'
+        | 'authentication_failed'
+        | 'rate_limit_exceeded'
+        | 'timeout'
+        | 'model_not_found'
+        | 'validation_error'
+        | 'provider_error'
+        | 'unknown'
+      )
+    | null;
   executedAt?: string | null;
   /**
    * Time taken to execute the test
@@ -1779,6 +1794,7 @@ export interface PromptTestsSelect<T extends boolean = true> {
   testConfig?: T;
   modelUnderTest?: T;
   executionStatus?: T;
+  failureReason?: T;
   executedAt?: T;
   executionTime?: T;
   tokensUsed?: T;

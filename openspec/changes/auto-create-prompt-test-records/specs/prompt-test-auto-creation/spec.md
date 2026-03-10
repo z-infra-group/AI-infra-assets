@@ -19,7 +19,63 @@ The system SHALL automatically create a PromptTests record when a user executes 
 - **WHEN** a user executes a prompt test that fails (connection error, timeout, etc.)
 - **THEN** the system SHALL create a PromptTests record with executionStatus "failed"
 - **AND** the record SHALL include error information in the actualOutput field
+- **AND** the record SHALL include detailed error reason in a new failureReason field
 - **AND** the system SHALL still return the test result to the user
+
+### Requirement: Detailed failure reason tracking
+The system SHALL record detailed failure reasons to help users understand why tests failed and how to fix them.
+
+#### Scenario: Categorize failure reasons
+- **WHEN** a prompt test fails
+- **THEN** the system SHALL categorize the failure into one of these types:
+  - `connection_error`: Unable to reach the provider API (network issues, DNS failures)
+  - `authentication_failed`: Invalid API key, credentials expired, or access denied
+  - `rate_limit_exceeded`: Provider rate limit or quota exceeded
+  - `timeout`: Provider took too long to respond
+  - `model_not_found`: Requested model does not exist in the provider
+  - `validation_error`: Invalid parameters or request format
+  - `provider_error`: Provider-side error (500, 503, etc.)
+  - `unknown`: Unexpected or uncategorized error
+
+#### Scenario: Record failure reason for connection errors
+- **WHEN** a test fails due to connection issues
+- **THEN** the system SHALL set failureReason to "connection_error"
+- **AND** the system SHALL include connection details in actualOutput (e.g., "ECONNREFUSED", "fetch failed")
+
+#### Scenario: Record failure reason for authentication errors
+- **WHEN** a test fails with 401 or 403 status
+- **THEN** the system SHALL set failureReason to "authentication_failed"
+- **AND** the system SHALL include helpful message in actualOutput (e.g., "Check the provider API key")
+
+#### Scenario: Record failure reason for rate limits
+- **WHEN** a test fails with 429 status
+- **THEN** the system SHALL set failureReason to "rate_limit_exceeded"
+- **AND** the system SHALL note the rate limit in actualOutput
+
+#### Scenario: Record failure reason for timeouts
+- **WHEN** a test times out
+- **THEN** the system SHALL set failureReason to "timeout"
+- **AND** the system SHALL include the timeout duration in actualOutput
+
+#### Scenario: Record failure reason for model not found
+- **WHEN** a provider reports the model doesn't exist
+- **THEN** the system SHALL set failureReason to "model_not_found"
+- **AND** the system SHALL include the model ID in actualOutput
+
+#### Scenario: Record failure reason for provider errors
+- **WHEN** a provider returns 500 or 503 error
+- **THEN** the system SHALL set failureReason to "provider_error"
+- **AND** the system SHALL include the HTTP status code in actualOutput
+
+#### Scenario: Unknown failures
+- **WHEN** a test fails with an unexpected error
+- **THEN** the system SHALL set failureReason to "unknown"
+- **AND** the system SHALL include the error message in actualOutput
+
+#### Scenario: failureReason is optional for successful tests
+- **WHEN** a test completes successfully
+- **THEN** the system MAY set failureReason to null
+- **AND** the system SHALL NOT require failureReason for completed tests
 
 #### Scenario: Record creation failure does not affect test result
 - **WHEN** the system fails to create a PromptTests record (database error, validation error)

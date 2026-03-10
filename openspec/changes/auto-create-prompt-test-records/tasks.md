@@ -25,6 +25,24 @@
 - [x] 2.11 Set score, feedback, isVerified to null (manual fields)
 - [x] 2.12 Set inputVariables, expectedOutput to null (not used in automated tests)
 
+## 2.5. Failure Reason Tracking (NEW)
+
+- [x] 2.5.1 Add failureReason field to PromptTests collection schema
+- [x] 2.5.2 Define failure reason options (connection_error, authentication_failed, rate_limit_exceeded, timeout, model_not_found, validation_error, provider_error, unknown)
+- [x] 2.5.3 Set failureReason field to only show when executionStatus is 'failed'
+- [x] 2.5.4 Make failureReason field optional (null by default)
+- [x] 2.5.5 Map connection errors to failureReason 'connection_error'
+- [x] 2.5.6 Map authentication errors (401, 403) to failureReason 'authentication_failed'
+- [x] 2.5.7 Map rate limit errors (429) to failureReason 'rate_limit_exceeded'
+- [x] 2.5.8 Map timeout errors to failureReason 'timeout'
+- [x] 2.5.9 Map model not found errors to failureReason 'model_not_found'
+- [x] 2.5.10 Map provider errors (500, 503) to failureReason 'provider_error'
+- [x] 2.5.11 Map validation errors to failureReason 'validation_error'
+- [x] 2.5.12 Map unknown errors to failureReason 'unknown'
+- [x] 2.5.13 Set failureReason to null for successful tests
+- [x] 2.5.14 Include error details in actualOutput for debugging
+- [ ] 2.5.15 Test failure reason categorization with different error scenarios
+
 ## 3. Error Handling and Resilience
 
 - [x] 3.1 Wrap record creation in try-catch block
