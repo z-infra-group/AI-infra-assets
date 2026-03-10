@@ -269,6 +269,75 @@ admin: {
 }
 ```
 
+### Prompt Testing
+
+**Automatic Test Record Creation**:
+- When users execute prompt tests via the "Test Prompt" button or API, the system automatically creates PromptTests records
+- Records preserve complete test history including input, output, timing, tokens used, and cost
+- **Auto-generated title format**: `{Prompt Title} - {Model ID} - {Timestamp}`
+  - Example: `Claude 3 Opus - claude-3-opus-20240229 - 2026-03-10 14:30`
+- **Environment Variable**: `ENABLE_AUTO_PROMPT_TEST_RECORD` (default: true)
+  - Set to "false" to disable automatic record creation
+  - Tests still execute normally, only record creation is skipped
+
+**API Endpoint**:
+- `POST /api/test-prompt` - Test a prompt with a specific provider and model
+- Request body: `{ promptId, providerId, modelId }`
+- Response: `{ success, generatedText, responseTime, tokensUsed, estimatedCost, modelUsed, providerUsed, error }`
+- Timeout: 60 seconds (configurable via `PROMPT_TEST_TIMEOUT` env var)
+- **Side Effect**: Automatically creates PromptTests record (if enabled)
+
+**Field Mapping from Test Result to PromptTests Schema**:
+```typescript
+{
+  title: auto-generated,                    // "{Prompt Title} - {Model ID} - {Timestamp}"
+  prompt: promptId,                         // relationship to tested prompt
+  author: req.user.id,                      // current user who executed test
+  actualOutput: generatedText,              // LLM generated text
+  testConfig: { temperature, maxTokens, topP, frequencyPenalty, presencePenalty },
+  modelUnderTest: modelId,                  // model ID used for test
+  executionStatus: 'completed' | 'failed',  // based on test success
+  executedAt: new Date(),                    // test execution timestamp
+  executionTime: responseTime,              // time taken in milliseconds
+  tokensUsed: tokensUsed.totalTokens,       // total tokens consumed
+  cost: estimatedCost,                      // cost in USD
+  // Manual fields set to null:
+  score: null,
+  feedback: null,
+  isVerified: false,
+  inputVariables: null,
+  expectedOutput: null,
+}
+```
+
+**Error Handling**:
+- Record creation failures are logged but don't prevent test results from being returned
+- Failed tests (connection errors, timeouts) create records with `executionStatus: 'failed'` and error message in `actualOutput`
+- The test result API response remains unchanged - record creation is a side effect
+
+**Performance Impact**:
+- Additional latency: ~50-100ms (using Payload Local API)
+- Target: < 200ms total overhead
+- Record creation uses same request context for efficiency
+
+**Usage Example**:
+```bash
+curl -X POST http://localhost:3000/api/test-prompt \
+  -H "Content-Type: application/json" \
+  -H "Cookie: payload-token=<JWT_TOKEN>" \
+  -d '{
+    "promptId": "<prompt-id>",
+    "providerId": "<provider-id>",
+    "modelId": "gpt-4"
+  }'
+```
+
+**Backward Compatibility**:
+- Manually created PromptTests records continue to work
+- API response format unchanged
+- Can disable auto-creation with environment variable if needed
+
+
 ### Access Control Security
 
 **Current Implementation** (TODO: Enhance with role-based access):
@@ -367,6 +436,16 @@ PAYLOAD_SECRET=your-secret-key-here
 NEXT_PUBLIC_SERVER_URL=http://localhost:3000
 CRON_SECRET=your-cron-secret-here
 PREVIEW_SECRET=your-preview-secret-here
+
+# LLM Provider and Prompt Testing
+# Enable automatic creation of PromptTests records (default: true)
+ENABLE_AUTO_PROMPT_TEST_RECORD=true
+
+# Timeout for prompt testing in milliseconds (default: 60000)
+PROMPT_TEST_TIMEOUT=60000
+
+# Timeout for provider connection testing in milliseconds (default: 10000)
+PROVIDER_TEST_TIMEOUT=10000
 ```
 
 ## Important Notes

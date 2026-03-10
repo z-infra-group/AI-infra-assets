@@ -8,10 +8,9 @@ export const model1: (args: ModelArgs) => RequiredDataFromCollectionSlug<'llm-mo
   provider,
 }) => ({
   displayName: 'GPT-4',
-  slug: 'gpt-4',
   modelId: 'gpt-4',
   description: 'OpenAI\'s most capable language model, optimized for complex reasoning and creative tasks.',
-  provider: provider.id,
+  provider: provider.id, // Optional reference for catalog purposes
   contextLength: 8192,
   maxTokens: 4096,
   supportsStreaming: true,

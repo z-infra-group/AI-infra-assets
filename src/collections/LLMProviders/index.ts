@@ -4,15 +4,6 @@ import { authenticated } from '../../access/authenticated'
 import { adminOnly } from '../../access/adminOnly'
 import { revalidateDelete, revalidateProvider } from './hooks/revalidateProvider'
 
-import {
-  MetaDescriptionField,
-  MetaImageField,
-  MetaTitleField,
-  OverviewField,
-  PreviewField,
-} from '@payloadcms/plugin-seo/fields'
-import { slugField } from 'payload'
-
 export const LLMProviders: CollectionConfig<'llm-providers'> = {
   slug: 'llm-providers',
   access: {
@@ -23,7 +14,7 @@ export const LLMProviders: CollectionConfig<'llm-providers'> = {
   },
   admin: {
     useAsTitle: 'displayName',
-    defaultColumns: ['displayName', 'slug', 'providerType', 'enabled', 'updatedAt'],
+    defaultColumns: ['displayName', 'providerType', 'enabled', 'updatedAt'],
     enableRichTextLink: false,
   },
   fields: [
@@ -37,9 +28,6 @@ export const LLMProviders: CollectionConfig<'llm-providers'> = {
         description: 'Human-readable name for this provider (e.g., "OpenAI", "Anthropic")',
       },
     },
-    slugField({
-      position: undefined,
-    }),
     {
       name: 'providerType',
       type: 'select',
@@ -208,9 +196,27 @@ export const LLMProviders: CollectionConfig<'llm-providers'> = {
                     step: 1,
                   },
                 },
+                {
+                  name: 'contextLength',
+                  type: 'number',
+                  label: 'Context Length',
+                  admin: {
+                    description: 'Maximum context window in tokens',
+                    step: 1,
+                  },
+                },
+                {
+                  name: 'costPerMillTokens',
+                  type: 'number',
+                  label: 'Cost Per Million Tokens (USD)',
+                  admin: {
+                    description: 'Average cost per million tokens for this model',
+                    step: 0.0001,
+                  },
+                },
               ],
               admin: {
-                description: 'Basic list of models offered by this provider. For detailed model management, use the LLM Models collection.',
+                description: 'List of models offered by this provider with their configurations.',
               },
             },
           ],
@@ -282,29 +288,6 @@ export const LLMProviders: CollectionConfig<'llm-providers'> = {
                 description: 'Tags for organizing and categorizing providers',
               },
             },
-          ],
-        },
-        {
-          name: 'meta',
-          label: 'SEO',
-          fields: [
-            OverviewField({
-              titlePath: 'meta.title',
-              descriptionPath: 'meta.description',
-              imagePath: 'meta.image',
-            }),
-            MetaTitleField({
-              hasGenerateFn: true,
-            }),
-            MetaImageField({
-              relationTo: 'media',
-            }),
-            MetaDescriptionField({}),
-            PreviewField({
-              hasGenerateFn: true,
-              titlePath: 'meta.title',
-              descriptionPath: 'meta.description',
-            }),
           ],
         },
       ],

@@ -88,10 +88,13 @@ export async function POST(request: Request) {
     }
 
     // Execute provider-specific test
-    const result = await testProviderConnection(provider as any, timeout)
+    const partialResult = await testProviderConnection(provider as any, timeout)
 
     // Add response time
-    result.responseTime = Date.now() - startTime
+    const result: TestResponse = {
+      ...partialResult,
+      responseTime: Date.now() - startTime,
+    }
 
     return NextResponse.json(result)
   } catch (error) {

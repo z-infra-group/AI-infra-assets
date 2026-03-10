@@ -20,6 +20,8 @@ import { BlocksFeatureClient as BlocksFeatureClient_e70f5e05f09f93e00b997edb1ef0
 import { FolderTableCell as FolderTableCell_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 import { FolderField as FolderField_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 import { default as default_ffd5023fd41d57520c97279ea21f6324 } from '@/components/TestPromptButton'
+import { default as default_60e074337b13ff38014e89d57693a5e3 } from '@/admin/components/PromptTestHistory'
+import { default as default_89e2e3facb83d2061ce87047fdcddf22 } from '@/admin/components/ViewPromptButton'
 import { default as default_5e64e920050f5f99ad1d071397025aa2 } from '@/components/TestProviderConnection'
 import { LinkToDoc as LinkToDoc_aead06e4cbf6b2620c5c51c9ab283634 } from '@payloadcms/plugin-search/client'
 import { ReindexButton as ReindexButton_aead06e4cbf6b2620c5c51c9ab283634 } from '@payloadcms/plugin-search/client'
@@ -53,6 +55,8 @@ export const importMap = {
   "@payloadcms/next/rsc#FolderTableCell": FolderTableCell_f9c02e79a4aed9a3924487c0cd4cafb1,
   "@payloadcms/next/rsc#FolderField": FolderField_f9c02e79a4aed9a3924487c0cd4cafb1,
   "@/components/TestPromptButton#default": default_ffd5023fd41d57520c97279ea21f6324,
+  "@/admin/components/PromptTestHistory#default": default_60e074337b13ff38014e89d57693a5e3,
+  "@/admin/components/ViewPromptButton#default": default_89e2e3facb83d2061ce87047fdcddf22,
   "@/components/TestProviderConnection#default": default_5e64e920050f5f99ad1d071397025aa2,
   "@payloadcms/plugin-search/client#LinkToDoc": LinkToDoc_aead06e4cbf6b2620c5c51c9ab283634,
   "@payloadcms/plugin-search/client#ReindexButton": ReindexButton_aead06e4cbf6b2620c5c51c9ab283634,

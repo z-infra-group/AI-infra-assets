@@ -17,6 +17,7 @@ Guidelines:
 - Offer multiple perspectives when appropriate
 - Maintain a supportive tone
 - Encourage the user's creative voice`,
+  slug: 'creative-writing-assistant',
   isPublic: true,
   author: author.id,
   modelScores: [

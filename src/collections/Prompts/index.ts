@@ -106,6 +106,16 @@ export const Prompts: CollectionConfig<'prompts'> = {
         },
       },
     },
+    {
+      name: 'testHistory',
+      type: 'ui',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '@/admin/components/PromptTestHistory',
+        },
+      },
+    },
 
     // Model Compatibility
     {

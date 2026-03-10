@@ -8,10 +8,9 @@ export const model2: (args: ModelArgs) => RequiredDataFromCollectionSlug<'llm-mo
   provider,
 }) => ({
   displayName: 'Claude 3 Opus',
-  slug: 'claude-3-opus',
   modelId: 'claude-3-opus-20240229',
   description: 'Anthropic\'s most powerful model for complex reasoning, nuance, and creativity.',
-  provider: provider.id,
+  provider: provider.id, // Optional reference for catalog purposes
   contextLength: 200000,
   maxTokens: 4096,
   supportsStreaming: true,

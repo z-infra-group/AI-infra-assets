@@ -8,6 +8,7 @@ import { headers } from 'next/headers'
 const DEFAULT_TIMEOUT = 60000 // 60 seconds for LLM inference
 const timeout = Number(process.env.PROMPT_TEST_TIMEOUT) || DEFAULT_TIMEOUT
 const COST_WARNING_THRESHOLD = 0.10 // USD
+const ENABLE_AUTO_PROMPT_TEST_RECORD = process.env.ENABLE_AUTO_PROMPT_TEST_RECORD !== 'false'
 
 interface TestRequest {
   promptId: string
@@ -26,6 +27,7 @@ interface TestResponse {
   } | null
   estimatedCost: number | null
   modelUsed: string | null
+  providerUsed?: string
   error?: string
 }
 
@@ -164,7 +166,7 @@ export async function POST(request: Request) {
     const modelDoc = providerModels.find((m: any) => m.modelId === modelId)
 
     // Execute prompt test
-    const result = await testPrompt(
+    const partialResult = await testPrompt(
       (prompt as any).content,
       prompt as any,
       provider,
@@ -174,12 +176,79 @@ export async function POST(request: Request) {
     )
 
     // Add response time and provider info
-    result.responseTime = Date.now() - startTime
-    result.providerUsed = (provider as any).displayName || providerId
+    const result: TestResponse = {
+      ...partialResult,
+      responseTime: Date.now() - startTime,
+      providerUsed: (provider as any).displayName || providerId,
+    }
 
     // Add cost warning if applicable
     if (result.estimatedCost && result.estimatedCost > COST_WARNING_THRESHOLD) {
       console.warn(`Expensive test: $${result.estimatedCost.toFixed(4)} (threshold: $${COST_WARNING_THRESHOLD})`)
+    }
+
+    // Auto-create PromptTests record if enabled
+    if (ENABLE_AUTO_PROMPT_TEST_RECORD) {
+      try {
+        // Generate timestamp for title
+        const now = new Date()
+        const timestamp = now.toLocaleString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        })
+
+        // Auto-generate title: "{Prompt Title} - {Model ID} - {Timestamp}"
+        const title = `${(prompt as any).title} - ${modelId} - ${timestamp}`
+
+        console.log(`[Auto-create] Creating PromptTests record: ${title}`)
+        console.log(`[Auto-create] Prompt ID: ${promptId}, Model: ${modelId}`)
+
+        // Create PromptTests record using Local API
+        const createdRecord = await payload.create({
+          collection: 'prompt-tests',
+          depth: 0,
+          context: {
+            disableRevalidate: true, // Disable cache invalidation for test records
+          },
+          data: {
+            title,
+            slug: `${promptId}-${modelId}-${Date.now()}`, // Generate unique slug
+            prompt: parseInt(promptId, 10), // Convert string ID to number for relationship
+            author: user.id,
+            actualOutput: result.generatedText,
+            testConfig: {
+              temperature: (prompt as any).temperature,
+              maxTokens: (prompt as any).maxTokens,
+              topP: (prompt as any).topP,
+              frequencyPenalty: (prompt as any).frequencyPenalty,
+              presencePenalty: (prompt as any).presencePenalty,
+            },
+            modelUnderTest: modelId,
+            executionStatus: result.success ? 'completed' : 'failed',
+            executedAt: now.toISOString(), // Date fields need ISO string
+            executionTime: result.responseTime,
+            tokensUsed: result.tokensUsed ? result.tokensUsed.totalTokens : null,
+            cost: result.estimatedCost,
+            // Manual fields set to null
+            score: null,
+            feedback: null,
+            isVerified: false,
+            inputVariables: null,
+            expectedOutput: null,
+          },
+        })
+
+        console.log(`[Auto-create] ✓ PromptTests record created with ID: ${createdRecord.id}`)
+        console.log(`[Auto-create] Record slug: ${createdRecord.slug}`)
+      } catch (recordError) {
+        // Log error but don't affect test result
+        console.error('Failed to create PromptTests record:', recordError instanceof Error ? recordError.message : String(recordError))
+        // Continue to return test result
+      }
     }
 
     return NextResponse.json(result)

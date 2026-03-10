@@ -1,33 +1,22 @@
 import type { CollectionAfterChangeHook, CollectionAfterDeleteHook } from 'payload'
 
-import { revalidatePath, revalidateTag } from 'next/cache'
+import { revalidateTag } from 'next/cache'
 
 import type { LlmProvider } from '../../../payload-types'
 
+/**
+ * Revalidate LLM providers cache after changes.
+ * Note: Admin-only collections don't need path revalidation, only tag-based cache invalidation.
+ */
 export const revalidateProvider: CollectionAfterChangeHook<LlmProvider> = ({
   doc,
-  previousDoc,
   req: { payload, context },
 }) => {
-  if (!context.disableRevalidate) {
-    if (doc._status === 'published') {
-      const path = `/llm-providers/${doc.slug}`
+  if (!context.disableRevalidate && doc._status === 'published') {
+    payload.logger.info(`Revalidating LLM provider: ${doc.displayName}`)
 
-      payload.logger.info(`Revalidating LLM provider at path: ${path}`)
-
-      revalidatePath(path)
-      revalidateTag('llm-providers-sitemap')
-    }
-
-    // If the provider was previously published, we need to revalidate the old path
-    if (previousDoc?._status === 'published' && doc._status !== 'published') {
-      const oldPath = `/llm-providers/${previousDoc.slug}`
-
-      payload.logger.info(`Revalidating old LLM provider at path: ${oldPath}`)
-
-      revalidatePath(oldPath)
-      revalidateTag('llm-providers-sitemap')
-    }
+    // Revalidate provider list cache
+    revalidateTag('llm-providers')
   }
   return doc
 }
@@ -37,10 +26,8 @@ export const revalidateDelete: CollectionAfterDeleteHook<LlmProvider> = ({
   req: { context },
 }) => {
   if (!context.disableRevalidate) {
-    const path = `/llm-providers/${doc?.slug}`
-
-    revalidatePath(path)
-    revalidateTag('llm-providers-sitemap')
+    // Revalidate provider list cache
+    revalidateTag('llm-providers')
   }
 
   return doc

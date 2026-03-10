@@ -52,6 +52,16 @@ export const PromptTests: CollectionConfig<'prompt-tests'> = {
         position: 'sidebar',
       },
     },
+    {
+      name: 'viewPrompt',
+      type: 'ui',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '@/admin/components/ViewPromptButton',
+        },
+      },
+    },
 
     // Test Configuration & Data
     {

@@ -944,11 +944,6 @@ export interface LlmProvider {
    */
   displayName: string;
   /**
-   * When enabled, the slug will auto-generate from the title field on save and autosave.
-   */
-  generateSlug?: boolean | null;
-  slug: string;
-  /**
    * Type of LLM provider
    */
   providerType:
@@ -992,7 +987,7 @@ export interface LlmProvider {
    */
   region?: string | null;
   /**
-   * Basic list of models offered by this provider. For detailed model management, use the LLM Models collection.
+   * List of models offered by this provider with their configurations.
    */
   models?:
     | {
@@ -1008,6 +1003,14 @@ export interface LlmProvider {
          * Maximum tokens supported by this model
          */
         maxTokens?: number | null;
+        /**
+         * Maximum context window in tokens
+         */
+        contextLength?: number | null;
+        /**
+         * Average cost per million tokens for this model
+         */
+        costPerMillTokens?: number | null;
         id?: string | null;
       }[]
     | null;
@@ -1040,10 +1043,6 @@ export interface LlmProvider {
         id?: string | null;
       }[]
     | null;
-  meta?: {
-    title?: string | null;
-    description?: string | null;
-  };
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1059,11 +1058,6 @@ export interface LlmModel {
    */
   displayName: string;
   /**
-   * When enabled, the slug will auto-generate from the title field on save and autosave.
-   */
-  generateSlug?: boolean | null;
-  slug: string;
-  /**
    * Unique identifier for the model (e.g., gpt-4, claude-3-opus-20240229)
    */
   modelId: string;
@@ -1072,9 +1066,9 @@ export interface LlmModel {
    */
   description?: string | null;
   /**
-   * The LLM provider that offers this model
+   * Optional: Link to a provider that offers this model (for catalog purposes only)
    */
-  provider: number | LlmProvider;
+  provider?: (number | null) | LlmProvider;
   /**
    * Maximum context window in tokens (0 for unlimited)
    */
@@ -1121,10 +1115,6 @@ export interface LlmModel {
         id?: string | null;
       }[]
     | null;
-  meta?: {
-    title?: string | null;
-    description?: string | null;
-  };
   publishedAt?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -1808,8 +1798,6 @@ export interface PromptTestsSelect<T extends boolean = true> {
  */
 export interface LlmProvidersSelect<T extends boolean = true> {
   displayName?: T;
-  generateSlug?: T;
-  slug?: T;
   providerType?: T;
   icon?: T;
   owner?: T;
@@ -1825,6 +1813,8 @@ export interface LlmProvidersSelect<T extends boolean = true> {
         modelId?: T;
         displayName?: T;
         maxTokens?: T;
+        contextLength?: T;
+        costPerMillTokens?: T;
         id?: T;
       };
   rateLimit?: T;
@@ -1838,12 +1828,6 @@ export interface LlmProvidersSelect<T extends boolean = true> {
         tag?: T;
         id?: T;
       };
-  meta?:
-    | T
-    | {
-        title?: T;
-        description?: T;
-      };
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -1854,8 +1838,6 @@ export interface LlmProvidersSelect<T extends boolean = true> {
  */
 export interface LlmModelsSelect<T extends boolean = true> {
   displayName?: T;
-  generateSlug?: T;
-  slug?: T;
   modelId?: T;
   description?: T;
   provider?: T;
@@ -1877,12 +1859,6 @@ export interface LlmModelsSelect<T extends boolean = true> {
     | {
         capability?: T;
         id?: T;
-      };
-  meta?:
-    | T
-    | {
-        title?: T;
-        description?: T;
       };
   publishedAt?: T;
   updatedAt?: T;

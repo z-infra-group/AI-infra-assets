@@ -13,12 +13,12 @@ import { beforeSyncWithSearch } from '@/search/beforeSync'
 import { LlmModel, LlmProvider, Page, Post, Prompt } from '@/payload-types'
 import { getServerSideURL } from '@/utilities/getURL'
 
-const generateTitle: GenerateTitle<Post | Page | Prompt | LlmProvider | LlmModel> = ({ doc }) => {
+const generateTitle: GenerateTitle<Post | Page | Prompt> = ({ doc }) => {
   const title = 'title' in doc ? doc.title : doc.displayName
   return title ? `${title} | Payload Website Template` : 'Payload Website Template'
 }
 
-const generateURL: GenerateURL<Post | Page | Prompt | LlmProvider | LlmModel> = ({ doc }) => {
+const generateURL: GenerateURL<Post | Page | Prompt> = ({ doc }) => {
   const url = getServerSideURL()
 
   return doc?.slug ? `${url}/${doc.slug}` : url
@@ -52,7 +52,7 @@ export const plugins: Plugin[] = [
     generateURL: (docs) => docs.reduce((url, doc) => `${url}/${doc.slug}`, ''),
   }),
   seoPlugin({
-    collections: ['posts', 'pages', 'prompts', 'llm-providers', 'llm-models'],
+    collections: ['posts', 'pages', 'prompts'],
     generateTitle,
     generateURL,
   }),

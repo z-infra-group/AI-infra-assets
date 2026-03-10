@@ -4,15 +4,6 @@ import { authenticated } from '../../access/authenticated'
 import { adminOnly } from '../../access/adminOnly'
 import { revalidateDelete, revalidateModel } from './hooks/revalidateModel'
 
-import {
-  MetaDescriptionField,
-  MetaImageField,
-  MetaTitleField,
-  OverviewField,
-  PreviewField,
-} from '@payloadcms/plugin-seo/fields'
-import { slugField } from 'payload'
-
 export const LLMModels: CollectionConfig<'llm-models'> = {
   slug: 'llm-models',
   access: {
@@ -23,7 +14,7 @@ export const LLMModels: CollectionConfig<'llm-models'> = {
   },
   admin: {
     useAsTitle: 'displayName',
-    defaultColumns: ['displayName', 'slug', 'modelId', 'provider', 'supportsStreaming', 'updatedAt'],
+    defaultColumns: ['displayName', 'modelId', 'provider', 'supportsStreaming', 'updatedAt'],
     enableRichTextLink: false,
   },
   fields: [
@@ -37,9 +28,6 @@ export const LLMModels: CollectionConfig<'llm-models'> = {
         description: 'Human-readable name for this model (e.g., "GPT-4", "Claude 3 Opus")',
       },
     },
-    slugField({
-      position: undefined,
-    }),
     {
       name: 'modelId',
       type: 'text',
@@ -58,15 +46,14 @@ export const LLMModels: CollectionConfig<'llm-models'> = {
       },
     },
 
-    // Provider Relationship
+    // Provider Relationship (optional - for catalog/reference purposes)
     {
       name: 'provider',
       type: 'relationship',
       relationTo: 'llm-providers',
-      required: true,
       admin: {
         position: 'sidebar',
-        description: 'The LLM provider that offers this model',
+        description: 'Optional: Link to a provider that offers this model (for catalog purposes only)',
       },
     },
 
@@ -178,29 +165,6 @@ export const LLMModels: CollectionConfig<'llm-models'> = {
                 description: 'List of specific capabilities (e.g., vision, code, reasoning, multimodal)',
               },
             },
-          ],
-        },
-        {
-          name: 'meta',
-          label: 'SEO',
-          fields: [
-            OverviewField({
-              titlePath: 'meta.title',
-              descriptionPath: 'meta.description',
-              imagePath: 'meta.image',
-            }),
-            MetaTitleField({
-              hasGenerateFn: true,
-            }),
-            MetaImageField({
-              relationTo: 'media',
-            }),
-            MetaDescriptionField({}),
-            PreviewField({
-              hasGenerateFn: true,
-              titlePath: 'meta.title',
-              descriptionPath: 'meta.description',
-            }),
           ],
         },
       ],
